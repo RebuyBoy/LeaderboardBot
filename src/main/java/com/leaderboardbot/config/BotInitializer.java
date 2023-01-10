@@ -1,6 +1,6 @@
 package com.leaderboardbot.config;
 
-import com.leaderboardbot.service.TelegramBot;
+import com.leaderboardbot.service.iface.BotService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
@@ -12,7 +12,9 @@ import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 @Component
 @Slf4j
 public class BotInitializer {
+
     private final TelegramBot bot;
+    private BotService botService;
 
     public BotInitializer(TelegramBot bot) {
         this.bot = bot;
