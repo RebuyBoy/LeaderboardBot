@@ -2,12 +2,13 @@ package com.leaderboardbot;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages={"com.rebuy.api.scope","com.leaderboardbot"})
+@EnableScheduling
 public class LeaderboardBotApplication {
+    public static void main(String[] args)  {
 
-    public static void main(String[] args) throws TelegramApiException {
         SpringApplication.run(LeaderboardBotApplication.class, args);
     }
 

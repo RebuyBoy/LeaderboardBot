@@ -14,7 +14,6 @@ import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 public class BotInitializer {
 
     private final TelegramBot bot;
-    private BotService botService;
 
     public BotInitializer(TelegramBot bot) {
         this.bot = bot;
@@ -26,7 +25,8 @@ public class BotInitializer {
             TelegramBotsApi telegramBotsApi = new TelegramBotsApi(DefaultBotSession.class);
             telegramBotsApi.registerBot(bot);
         } catch (TelegramApiException e) {
-            log.error("Error occurred " + e.getMessage());
+            log.error("an error occurred during bot initialization: " + e.getMessage());
         }
     }
+
 }

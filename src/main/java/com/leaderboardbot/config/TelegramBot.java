@@ -5,7 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
-import org.telegram.telegrambots.meta.api.methods.BotApiMethod;
+import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
@@ -15,8 +15,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 public class TelegramBot extends TelegramLongPollingBot {
 
     private final BotConfig botConfig;
-    private BotService botService;
-
+    private final BotService botService;
 
     @Override
     public String getBotUsername() {
@@ -30,11 +29,15 @@ public class TelegramBot extends TelegramLongPollingBot {
 
     @Override
     public void onUpdateReceived(Update update) {
-        BotApiMethod<?> answer = botService.getAnswer(update);
+        SendMessage message = botService.handleUpdate(update);
+        sendMessage(message);
+    }
+
+    public void sendMessage(SendMessage sendMessage) {
         try {
-            execute(answer);
+            execute(sendMessage);
         } catch (TelegramApiException e) {
-            e.printStackTrace();
+            log.info("an error occurred during sending message: " + e.getMessage());
         }
     }
 }
