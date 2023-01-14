@@ -9,11 +9,11 @@ import java.util.Set;
 public interface SubscribeService {
     void create(Subscription subscription);
 
-    void remove(Subscription subscription);
+    void delete(Subscription subscription);
 
-    void remove(String chatId);
+    void delete(String chatId);
 
-    void removeAll();
+    void deleteAll();
 
     boolean hasAnySubscribes();
 

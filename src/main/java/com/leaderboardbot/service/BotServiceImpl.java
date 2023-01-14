@@ -7,20 +7,23 @@ import com.leaderboardbot.service.iface.SubscribeService;
 import com.leaderboardbot.validator.Validator;
 import com.rebuy.api.scope.dto.response.ResultResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class BotServiceImpl implements BotService {
-    private final SubscribeService subscribeService;
 
+    private final SubscribeService subscribeService;
     //TODO status add smile if points changed
-    //TODO help
+    //TODO send message if bot crushed
     @Override
     public SendMessage handleUpdate(Update update) {
         String chatId = update.getMessage().getChatId().toString();
@@ -35,17 +38,33 @@ public class BotServiceImpl implements BotService {
 
     private SendMessage getSendMessageByCommand(String command, String chatId) {
         String textAnswer = switch (getCommand(command)) {
-            case "/start" -> "Hello";
+            case "/start" -> "Hello gonshik";
             case "/watch" -> getWatchAnswer(command, chatId);
             case "/status" -> getStatusAnswer(chatId);
             case "/stop" -> getStopAnswer(chatId);
+            case "/help" -> getHelpAnswer();
             default -> "Command not found";
         };
         return getSendMessage(textAnswer, chatId);
     }
 
+    private String getHelpAnswer() {
+        return """
+                commands:
+                /watch [stake] [target points] -> create subscription
+                /status -> shows first 3 players below target points
+                /stop -> delete all subscriptions
+                                
+                for example, if you want to follow a player on ante 1$ with 1000 points
+                /watch 100 1050
+                after first scan 0-10 minutes bot will start watching all players below 1050 points
+                scanning every 10 minutes for 3 hours
+                if anyone cross target points bot will send message
+                """;
+    }
+
     private String getStopAnswer(String chatId) {
-        subscribeService.remove(chatId);
+        subscribeService.delete(chatId);
         return "successful deleted";
     }
 
@@ -53,8 +72,9 @@ public class BotServiceImpl implements BotService {
         String textAnswer;
         try {
             Subscription subscription = getSubscription(command, chatId);
+            log.info("Subscription created {}", subscription);
             subscribeService.create(subscription);
-            textAnswer = "Successful " + subscription.getStake() + " " + subscription.getTargetPoints();
+            textAnswer = String.format("subscription created: %s", getStakeAndTargetLine(subscription));
         } catch (Exception e) {
             textAnswer = e.getMessage();
         }
@@ -63,8 +83,12 @@ public class BotServiceImpl implements BotService {
 
     private Subscription getSubscription(String command, String chatId) {
         String[] data = command.split(" ");
+        if (data.length < 3) {
+            throw new IllegalArgumentException("missed stake or target points");
+        }
         return Subscription
                 .builder()
+                .creationDate(LocalDateTime.now())
                 .stake(Validator.getStake(data[1]))
                 .targetPoints(Validator.validateTargetPoint(data[2]))
                 .chatId(chatId)
@@ -83,17 +107,35 @@ public class BotServiceImpl implements BotService {
     }
 
     @Override
-    public SendMessage getSendMessageWhenNewPlayersAbove(Set<ResultResponse> newPlayersAbove, Subscription subscription) {
-        StringBuilder stringBuilder = new StringBuilder("new players above target");
-        stringBuilder.append(getStakeAndTargetLine(subscription));
+    public SendMessage getFinishedSubscriptionSendMessage(Set<ResultResponse> newPlayersAbove, Subscription subscription) {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder
+                .append("ALARM")
+                .append("\n")
+                .append("player crossed target")
+                .append("\n\n")
+                .append(getStakeAndTargetLine(subscription));
         for (ResultResponse result : newPlayersAbove) {
-            stringBuilder.append(getFormattedPlayerText(result));
+            stringBuilder
+                    .append("\n")
+                    .append(getFormattedPlayerText(result));
         }
         return getSendMessage(stringBuilder.toString(), subscription.getChatId());
     }
 
+    public SendMessage getExpiredSubscriptionSendMessage(Subscription subscription) {
+        String expiredMessageText = String.format("subscription expired %s", getStakeAndTargetLine(subscription));
+        return getSendMessage(expiredMessageText, subscription.getChatId());
+    }
+
+    @Override
+    public SendMessage getScanErrorSendMessage(Subscription subscription) {
+        String message = String.format("error when fetching data for stake %s, retry in 10 minutes", subscription.getStake().getName());
+        return getSendMessage(message, subscription.getChatId());
+    }
+
     private static String getFormattedPlayerText(ResultResponse result) {
-        return String.format("%n%d | %s : %s", result.getRank(), result.getName(), result.getPoints().toString());
+        return String.format("%d | %s : %s", result.getRank(), result.getName(), result.getPoints().toString());
     }
 
     public String getStatusAnswer(String chatId) {
@@ -109,7 +151,9 @@ public class BotServiceImpl implements BotService {
                 stringBuilder.append(" waiting update...");
             } else {
                 for (ResultResponse result : playersBeforeTargetLimit3) {
-                    stringBuilder.append(getFormattedPlayerText(result));
+                    stringBuilder
+                            .append("\n")
+                            .append(getFormattedPlayerText(result));
                 }
             }
         }
@@ -117,7 +161,7 @@ public class BotServiceImpl implements BotService {
     }
 
     private static String getStakeAndTargetLine(Subscription subscription) {
-        return String.format("%n%n stake %s : target %d ", subscription.getStake(), subscription.getTargetPoints());
+        return String.format("stake %s : target %d ", subscription.getStake().getName(), subscription.getTargetPoints());
     }
 
     private MessageType getMessageType(Update update) {

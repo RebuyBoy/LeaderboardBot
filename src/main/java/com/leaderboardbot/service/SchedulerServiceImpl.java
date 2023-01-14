@@ -10,11 +10,13 @@ import com.rebuy.api.scope.dto.response.ResultResponse;
 import com.rebuy.api.scope.feignclient.LeaderboardApiClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -27,48 +29,69 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@EnableScheduling
 public class SchedulerServiceImpl implements SchedulerService {
+
     private final SubscribeService subscribeService;
     private final LeaderboardApiClient leaderboardApi;
     private final BotService botService;
     private final TelegramBot bot;
 
-
-    //TODO if request failed ?? send message  ->  request failed retry in 10 minutes
     @Override
-    @Scheduled(fixedDelay = 10,timeUnit = TimeUnit.MINUTES)
+    @Scheduled(fixedDelayString = "${bot.scan.interval.seconds}", timeUnit = TimeUnit.SECONDS)
     public void run() {
         if (subscribeService.hasAnySubscribes()) {
-            LocalDateTime currentTime = getCurrentZonedDate();
+            LocalDateTime currentTime = ZonedDateTime
+                    .now(ZoneId.of("GMT-8"))
+                    .toLocalDateTime();
             if (currentTime.getHour() == 0) {
-                log.info("Subscriptions cleared at " + currentTime);
-                subscribeService.removeAll();
+                log.info("All subscriptions deleted at " + currentTime);
+                subscribeService.deleteAll();
             }
             subscribeService.getStakes()
                     .forEach(this::startTask);
         }
     }
 
-    private LocalDateTime getCurrentZonedDate() {
-        return ZonedDateTime
-                .now(ZoneId.of("GMT-8"))
-                .toLocalDateTime();
+    private void startTask(StakeRequest stake) {
+        Set<Subscription> subscriptions = subscribeService.getSubscribesByStake(stake);
+        List<ResultResponse> results = getDataByStake(stake, subscriptions);
+        for (Subscription subscription : subscriptions) {
+            log.info("handle subscription on {} : {} for chatId: {} ", stake, subscription.getTargetPoints(), subscription.getChatId());
+            if (isExpired(subscription)) {
+                endExpiredSubscription(subscription);
+            } else {
+                Set<ResultResponse> playersAboveTargetPoints = getPlayersAboveTargetPoints(results, subscription.getTargetPoints());
+                if (subscription.isActive()) {
+                    checkChanges(playersAboveTargetPoints, subscription);
+                } else {
+                    subscription.setActive(true);
+                    subscription.setPlayersAboveTarget(playersAboveTargetPoints);
+                }
+                subscription.setPlayersBeforeTargetLimit3(getPlayersBeforeTargetPoints(results, subscription.getTargetPoints()));
+            }
+        }
     }
 
-    private void startTask(StakeRequest stake) {
-        log.info("{} task started", stake);
-        List<ResultResponse> results = leaderboardApi.parseCurrentDataByStake(stake);
-        Set<Subscription> subscriptions = subscribeService.getSubscribesByStake(stake);
-        for (Subscription subscription : subscriptions) {
-            Set<ResultResponse> playersAboveTargetPoints = getPlayersAboveTargetPoints(results, subscription.getTargetPoints());
-            if (subscription.isActive()) {
-                checkChanges(playersAboveTargetPoints, subscription);
-            } else {
-                subscription.setActive(true);
-                subscription.setPlayersAboveTarget(playersAboveTargetPoints);
-            }
-            subscription.setPlayersBeforeTargetLimit3(getPlayersBeforeTargetPoints(results, subscription.getTargetPoints()));
+    private List<ResultResponse> getDataByStake(StakeRequest stake, Set<Subscription> subscriptions) {
+        try {
+            return leaderboardApi.parseCurrentDataByStake(stake);
+        } catch (Exception e) {
+            warnAllSubscribers(subscriptions);
         }
+        throw new IllegalStateException("Scan data was failed retry in 10 minutes");
+    }
+
+    private void warnAllSubscribers(Set<Subscription> subscriptions) {
+        for (Subscription subscription : subscriptions) {
+            SendMessage sendMessage = botService.getScanErrorSendMessage(subscription);
+            bot.sendMessage(sendMessage);
+        }
+
+    }
+
+    private boolean isExpired(Subscription subscription) {
+        return Duration.between(subscription.getCreationDate(), LocalDateTime.now()).toHours() > 3;
     }
 
     private List<ResultResponse> getPlayersBeforeTargetPoints(List<ResultResponse> results, int targetPoints) {
@@ -90,10 +113,23 @@ public class SchedulerServiceImpl implements SchedulerService {
             newPlayersAbove.removeIf(resultResponse -> resultResponse.getName().equals(result.getName()));
         }
         if (!newPlayersAbove.isEmpty()) {
-            SendMessage sendMessage = botService.getSendMessageWhenNewPlayersAbove(newPlayersAbove, subscription);
-            subscribeService.remove(subscription);
-            bot.sendMessage(sendMessage);
+            endFinishedSubscription(newPlayersAbove, subscription);
         }
+    }
+
+    private void endExpiredSubscription(Subscription subscription) {
+        SendMessage sendMessage = botService.getExpiredSubscriptionSendMessage(subscription);
+        endSubscription(subscription, sendMessage);
+    }
+
+    private void endFinishedSubscription(Set<ResultResponse> newPlayersAbove, Subscription subscription) {
+        SendMessage sendMessage = botService.getFinishedSubscriptionSendMessage(newPlayersAbove, subscription);
+        endSubscription(subscription, sendMessage);
+    }
+
+    private void endSubscription(Subscription subscription, SendMessage sendMessage) {
+        subscribeService.delete(subscription);
+        bot.sendMessage(sendMessage);
     }
 
 }

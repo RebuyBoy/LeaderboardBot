@@ -20,7 +20,7 @@ public class SubscribeServiceImpl implements SubscribeService {
     private final Map<StakeRequest, Set<Subscription>> subscriptions = new EnumMap<>(StakeRequest.class);
 
     @Override
-    public void remove(Subscription subscription) {
+    public void delete(Subscription subscription) {
         Set<Subscription> subscriptionSet = subscriptions.get(subscription.getStake());
         subscriptionSet.remove(subscription);
         if (subscriptionSet.isEmpty()) {
@@ -29,9 +29,13 @@ public class SubscribeServiceImpl implements SubscribeService {
     }
 
     @Override
-    public void remove(String chatId) {
+    public void delete(String chatId) {
         for (Map.Entry<StakeRequest, Set<Subscription>> entry : subscriptions.entrySet()) {
-            entry.getValue().removeIf(s -> s.getChatId().equals(chatId));
+            Set<Subscription> subs = entry.getValue();
+            subs.removeIf(sub -> sub.getChatId().equals(chatId));
+            if (subs.isEmpty()) {
+                subscriptions.remove(entry.getKey());
+            }
         }
     }
 
@@ -47,7 +51,7 @@ public class SubscribeServiceImpl implements SubscribeService {
         }
     }
 
-    public void removeAll() {
+    public void deleteAll() {
         subscriptions.clear();
     }
 

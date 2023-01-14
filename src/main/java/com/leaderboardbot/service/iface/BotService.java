@@ -13,6 +13,10 @@ public interface BotService {
 
     SendMessage getSendMessage(String text, String chatId);
 
-    SendMessage getSendMessageWhenNewPlayersAbove(Set<ResultResponse> newPlayersAbove, Subscription subscription);
+    SendMessage getFinishedSubscriptionSendMessage(Set<ResultResponse> newPlayersAbove, Subscription subscription);
+
+    SendMessage getExpiredSubscriptionSendMessage(Subscription subscription);
+
+    SendMessage getScanErrorSendMessage(Subscription subscription);
 
 }

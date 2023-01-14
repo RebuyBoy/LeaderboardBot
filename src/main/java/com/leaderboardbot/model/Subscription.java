@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -16,10 +17,11 @@ import java.util.Set;
 @Setter
 @ToString
 public class Subscription {
-    //TODO subscription ID equals hashcode by id
-    private StakeRequest stake;
-    private int targetPoints;
-    private String chatId;
+
+    private final LocalDateTime creationDate;
+    private final StakeRequest stake;
+    private final int targetPoints;
+    private final String chatId;
     private boolean isActive;
     private Set<ResultResponse> playersAboveTarget;
     private List<ResultResponse> playersBeforeTargetLimit3;
@@ -29,12 +31,12 @@ public class Subscription {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Subscription that = (Subscription) o;
-        return getTargetPoints() == that.getTargetPoints() && getStake() == that.getStake() && Objects.equals(getChatId(), that.getChatId());
+        return getTargetPoints() == that.getTargetPoints() && getCreationDate().equals(that.getCreationDate()) && getStake() == that.getStake() && getChatId().equals(that.getChatId());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(getStake(), getTargetPoints(), getChatId());
+        return Objects.hash(getCreationDate(), getStake(), getTargetPoints(), getChatId());
     }
 
 }
